@@ -1,0 +1,126 @@
+Report on the financial and human cost of weather events
+========================================================
+
+In this document we shall examine the leading causes of fatalities, injuries, and financial loss taken from the NOAA storm database.
+We shall only consider years since 1970, since the early years of the database are more likely to be incomplete.
+In each case, we shall report on the most costly (in financial or human terms) weather events.
+
+```{r setoptions, echo = FALSE}
+  opts_chunk$set(echo=FALSE, results="asis")
+```
+## Data Processing
+
+All operations in the section are cached to save time on subsequent runs.
+You should expect the first compilation of this document to spend considerable time on this section.
+
+First we read in the data as a CSV file
+```{r, cache = TRUE}
+  workingDir <- getwd() 
+  zipData <- paste(workingDir, "repdata%2Fdata%2FStormData.csv.bz2", sep="/")
+  eventData <- read.csv(bzfile(zipData))
+```
+
+The **BGN_DATE** varaible is converted into the **POSIXlt** format.
+```{r, cache = TRUE}
+  # Experimentation with the dataset revealed that the
+  # dates are in the month/day/year format
+  eventData$PTIME = strptime(eventData$BGN_DATE, "%m/%d/%Y %H:%M:%S")
+```
+
+We make a new data frame containing only the variable we are interested in.
+We summarise the data as a logical indicating whether or not the event was pre-1970.
+```{r, cache = TRUE}
+  costData = data.frame(EVTYPE = eventData$EVTYPE, FATALITIES = eventData$FATALITIES,
+                        INJURIES = eventData$INJURIES)
+  # Add a variable indicating if the event was pre-1970:
+  costData$PRE1970 = eventData$PTIME$year < 70
+```
+
+The NOAA dataset stores property damage cost as a small number, **PROPDMG**, and an exponent, **PROPDMGEP**.
+We now convert these pair into a single numeric value.
+I was unable to find documentation on what the exponents "h", "+", "-", or "?" denoted, so the cost from these events has been removed by setting it to zero. 
+The same goes for the **CROPDMG** and **CROPDMGEXP** variables.
+```{r, cache = TRUE}
+  # Add variables for the cost
+  expToFactor <- function(E){
+    Enum <- suppressWarnings(as.numeric(E))
+    if(!is.na(Enum)){
+      10^Enum
+    } else if(E == ""){
+      1
+    } else {
+    switch(E,
+           "K" = 10^3, "k" = 10^3,
+           "M" = 10^6, "m" = 10^6,
+           "B" = 10^9, "b" = 10^9,
+           0)
+    }
+  }
+  # Conver the exponents into numbers we can actually multiply by!
+  numExp <- (apply(as.matrix(as.character(data$PROPDMGEXP)), MARGIN = 1 , FUN = expToFactor))
+  costData$PROPDMG <- eventData$PROPDMG * numExp
+  numExp <- (apply(as.matrix(as.character(data$PROPDMGEXP)), MARGIN = 1 , FUN = expToFactor))
+  costData$CROPDMG <- eventData$CROPDMG * numExp
+  costData$TOTALDMG <- costData$PROPDMG + costData$CROPDMG
+```
+
+We now create an aggregate table of costs by events type, and by pre-9170 versus post-1970 events.
+This latter choice is made because the latter dataset is more likely to be complete.
+The earlier tables are removed to free up memory.
+
+```{r, cache = TRUE}
+  aData <- aggregate(cbind(INJURIES, FATALITIES, TOTALDMG) ~ PRE1970 + EVTYPE, data = costData, FUN = sum)
+  rm(eventData)
+  rm(costData)
+```
+
+## Results
+
+### Population health harm of weather events
+
+Due to the difficulty in assigning a relative weighting to injuries and deaths, we report seperately on each.
+We only include events after 1970, since later dater is likely to be more complete.
+Due to the large number of event types in the dataset we report only on the six causing the highest number of deaths and injuries.
+
+```{r, fig.width = 480, fig.height = 480}
+  fatalData <- aData[order(aData$FATALITIES, decreasing=TRUE), ]
+  fatalData <- head(fatalData[fatalData$PRE1970 == FALSE, ], n=6)
+  barplot(fatalData$FATALITIES, names.arg = fatalData$EVTYPE, cex.names=0.6,
+          main = "Fatalities by event type", ylab = "Fatalities since 1970")
+```
+
+We can see that the most deadly event type is `r tolower(fatalData$EVTYPE[1])`, responsible for `r fatalData$FATALITIES[1]` deaths since 1970, followed by `r tolower(fatalData$EVTYPE[2])`, causing `r fatalData$FATALITIES[2]` deaths since 1970.
+
+
+```{r, fig.width = 480, fig.height = 480}
+  injData <- aData[order(aData$INJURIES, decreasing=TRUE), ]
+  injData <- head(injData[injData$PRE1970 == FALSE, ], n=6)
+  barplot(injData$INJURIES, names.arg = injData$EVTYPE, cex.names=0.6,
+          main = "Injuries by event type", ylab = "Injuries since 1970")
+```
+
+We can see that the most non-fatal injuries were caused by `r tolower(injData$EVTYPE[1])`, responsible for `r injData$INJURIES[1]` injuries since 1970.
+This is more than twice the number of non-fatal injuries from the next 5 sources put together.
+
+### Financial harm of weather events
+
+Again, we report data from 1970 onwards in an effort to improve completeness.
+
+```{r, fig.width = 480, fig.height = 480}
+  dmgData <- aData[order(aData$TOTALDMG, decreasing=TRUE), ]
+  dmgData <- head(dmgData[dmgData$PRE1970 == FALSE, ], n=6)
+  barplot(dmgData$TOTALDMG, names.arg = dmgData$EVTYPE, cex.names=0.5, axes=F,
+          ylab = "Financial damage since 1970 (trillions (10^12) of dollars)",
+          main = "Financial damage by event type")
+  axis(2, at = c(0, 2e11, 4e11, 6e11, 8e11), labels = c("0", "0.2", "0.4", "0.6", "0.8"))
+```
+
+The leading two event types under the NOAA classification, hurricane and "hurricane / typhoon", are really the same physical phenomenon.
+Between them, these account for a total of `r (dmgData$TOTALDMG[1] + dmgData$TOTALDMG[2])/1e12` trillion dollars of financial damage since 1970, dwarfing the next greatest source of damage, `r tolower(dmgData$EVTYPE[3])`, at `r dmgData$TOTALDMG[3]/1e9` billion dollars of damage since 1970.
+
+## Conclusion
+
+The main weather-realted causes of financial loss (by a very large margin) are hurricanes and typhoons.
+However, these do not enter into the top six causes of fatalities or injuries, both of which are mainly due to tornadoes.
+I would speculate that this is due to the much longer warning period preceding a hurricane making landfall, allowing evacuation of people, leaving only buildings vulnerable.
+Tornadoes occur on a much shorter timescale and are not preceded by a warning in the same way.

@@ -6,7 +6,7 @@ We shall only consider years since 1970, since the early years of the database a
 In each case, we shall report on the most costly (in financial or human terms) weather events.
 
 ```{r setoptions, echo = FALSE}
-  opts_chunk$set(echo=FALSE, results="asis")
+  opts_chunk$set(echo=TRUE, results="asis")
 ```
 ## Data Processing
 
@@ -28,7 +28,7 @@ The **BGN_DATE** varaible is converted into the **POSIXlt** format.
 ```
 
 We make a new data frame containing only the variable we are interested in.
-We summarise the data as a logical indicating whether or not the event was pre-1970.
+We summarise the date as a logical indicating whether or not the event was pre-1970.
 ```{r, cache = TRUE}
   costData = data.frame(EVTYPE = eventData$EVTYPE, FATALITIES = eventData$FATALITIES,
                         INJURIES = eventData$INJURIES)
@@ -36,9 +36,9 @@ We summarise the data as a logical indicating whether or not the event was pre-1
   costData$PRE1970 = eventData$PTIME$year < 70
 ```
 
-The NOAA dataset stores property damage cost as a small number, **PROPDMG**, and an exponent, **PROPDMGEP**.
+The NOAA dataset stores property damage cost as a small number, **PROPDMG**, and an exponent, **PROPDMGEXP**.
 We now convert these pair into a single numeric value.
-I was unable to find documentation on what the exponents "h", "+", "-", or "?" denoted, so the cost from these events has been removed by setting it to zero. 
+I was unable to find documentation on what the exponents "h", "+", "-", or "?" denoted, so the cost from these events has been removed by treating it as zero. 
 The same goes for the **CROPDMG** and **CROPDMGEXP** variables.
 ```{r, cache = TRUE}
   # Add variables for the cost
@@ -57,9 +57,9 @@ The same goes for the **CROPDMG** and **CROPDMGEXP** variables.
     }
   }
   # Conver the exponents into numbers we can actually multiply by!
-  numExp <- (apply(as.matrix(as.character(data$PROPDMGEXP)), MARGIN = 1 , FUN = expToFactor))
+  numExp <- (apply(as.matrix(as.character(eventData$PROPDMGEXP)), MARGIN = 1 , FUN = expToFactor))
   costData$PROPDMG <- eventData$PROPDMG * numExp
-  numExp <- (apply(as.matrix(as.character(data$PROPDMGEXP)), MARGIN = 1 , FUN = expToFactor))
+  numExp <- (apply(as.matrix(as.character(eventData$CROPDMGEXP)), MARGIN = 1 , FUN = expToFactor))
   costData$CROPDMG <- eventData$CROPDMG * numExp
   costData$TOTALDMG <- costData$PROPDMG + costData$CROPDMG
 ```
@@ -82,41 +82,50 @@ Due to the difficulty in assigning a relative weighting to injuries and deaths, 
 We only include events after 1970, since later dater is likely to be more complete.
 Due to the large number of event types in the dataset we report only on the six causing the highest number of deaths and injuries.
 
-```{r, fig.width = 480, fig.height = 480}
+```{r, fig.width = 7, fig.height = 7}
   fatalData <- aData[order(aData$FATALITIES, decreasing=TRUE), ]
   fatalData <- head(fatalData[fatalData$PRE1970 == FALSE, ], n=6)
   barplot(fatalData$FATALITIES, names.arg = fatalData$EVTYPE, cex.names=0.6,
           main = "Fatalities by event type", ylab = "Fatalities since 1970")
+  mostFatalEV <- tolower(fatalData$EVTYPE[1])
+  mostFatalF  <- fatalData$FATALITIES[1]
+  secondFatalEV <- tolower(fatalData$EVTYPE[2])
+  secondFatalF  <- fatalData$FATALITIES[2]
 ```
 
-We can see that the most deadly event type is `r tolower(fatalData$EVTYPE[1])`, responsible for `r fatalData$FATALITIES[1]` deaths since 1970, followed by `r tolower(fatalData$EVTYPE[2])`, causing `r fatalData$FATALITIES[2]` deaths since 1970.
+We can see that the most deadly event type is `r mostFatalEV`, responsible for `r mostFatalF` deaths since 1970, followed by `r secondFatalEV`, causing `r secondFatalF` deaths since 1970.
 
 
-```{r, fig.width = 480, fig.height = 480}
+```{r, fig.width = 7, fig.height = 7}
   injData <- aData[order(aData$INJURIES, decreasing=TRUE), ]
   injData <- head(injData[injData$PRE1970 == FALSE, ], n=6)
   barplot(injData$INJURIES, names.arg = injData$EVTYPE, cex.names=0.6,
           main = "Injuries by event type", ylab = "Injuries since 1970")
+  mostInjEV <- tolower(injData$EVTYPE[1])
+  mostInjI  <- injData$INJURIES[1]
 ```
 
-We can see that the most non-fatal injuries were caused by `r tolower(injData$EVTYPE[1])`, responsible for `r injData$INJURIES[1]` injuries since 1970.
+We can see that the most non-fatal injuries were caused by `r mostInjEV`, responsible for `r format(mostInjI, scientific=F)` no-fatal injuries since 1970.
 This is more than twice the number of non-fatal injuries from the next 5 sources put together.
 
 ### Financial harm of weather events
 
 Again, we report data from 1970 onwards in an effort to improve completeness.
 
-```{r, fig.width = 480, fig.height = 480}
+```{r, fig.width = 7, fig.height = 7}
   dmgData <- aData[order(aData$TOTALDMG, decreasing=TRUE), ]
   dmgData <- head(dmgData[dmgData$PRE1970 == FALSE, ], n=6)
   barplot(dmgData$TOTALDMG, names.arg = dmgData$EVTYPE, cex.names=0.5, axes=F,
           ylab = "Financial damage since 1970 (trillions (10^12) of dollars)",
           main = "Financial damage by event type")
   axis(2, at = c(0, 2e11, 4e11, 6e11, 8e11), labels = c("0", "0.2", "0.4", "0.6", "0.8"))
+  top2DmgDT <- (dmgData$TOTALDMG[1] + dmgData$TOTALDMG[2])/1e12
+  thirdDmgEV <- tolower(dmgData$EVTYPE[3])
+  thirdDmgDB <- dmgData$TOTALDMG[3]/1e9
 ```
 
 The leading two event types under the NOAA classification, hurricane and "hurricane / typhoon", are really the same physical phenomenon.
-Between them, these account for a total of `r (dmgData$TOTALDMG[1] + dmgData$TOTALDMG[2])/1e12` trillion dollars of financial damage since 1970, dwarfing the next greatest source of damage, `r tolower(dmgData$EVTYPE[3])`, at `r dmgData$TOTALDMG[3]/1e9` billion dollars of damage since 1970.
+Between them, these account for a total of `r format(top2DmgDT, digits=2)` trillion dollars of financial damage since 1970, dwarfing the next greatest source of damage, `r thirdDmgEV`, at `r format(thirdDmgDB, digits=2)` billion dollars of damage since 1970.
 
 ## Conclusion
 
